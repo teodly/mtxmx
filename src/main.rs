@@ -2,11 +2,12 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::{sync::atomic::AtomicBool, time::Duration};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use atomic_float::AtomicF32;
 use clap::Parser;
 use itertools::Itertools;
+use jack::PortFlags;
 use log::error;
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
 
@@ -138,7 +139,7 @@ const MAX_CHANNELS_PER_ENDPOINT: usize = 16;
 struct Endpoint {
     pub name: String,
     pub gain: f32,
-    pub connect_to: Vec<String>,
+    pub connect_to: Vec<Vec<String>>,
     pub rt_channels: Vec<usize>,
 }
 
@@ -168,12 +169,13 @@ struct HighLevelMixer<N, P> {
     rt_inputs: Vec<jack::Port<jack::Unowned>>,
     matrix: Matrix<MatrixPoint>,
     rt: Arc<RealTimeMixer>,
-    jack_client: jack::AsyncClient<N, P>
+    jack_client: jack::AsyncClient<N, P>,
+    to_mqtt: tokio::sync::mpsc::Sender<ToMQTT>,
 }
 
 impl<N, P> HighLevelMixer<N, P> {
     fn on_topic_update(&mut self, parts: Vec<&str>, value: &str) -> bool {
-        log::info!("on_topic_update {parts:?}");
+        log::debug!("on_topic_update {parts:?}");
         if parts.len() >= 2 {
             if let Some(out_id) = parts[0].strip_prefix("out").map(|s|s.parse::<usize>().ok()).flatten() {
                 if let Some(in_id) = parts[1].strip_prefix("in").map(|s|s.parse::<usize>().ok()).flatten() {
@@ -252,7 +254,7 @@ impl<N, P> HighLevelMixer<N, P> {
                                 return true;
                             },
                             "connect_to" => {
-                                if let Ok(jvec) = serde_json::from_str::<Vec<String>>(value) {
+                                if let Ok(jvec) = serde_json::from_str::<Vec<Vec<String>>>(value) {
                                     if jvec.len() > MAX_CHANNELS_PER_ENDPOINT {
                                         return false;
                                         //jvec.resize(MAX_CHANNELS_PER_ENDPOINT, "".into());
@@ -348,16 +350,28 @@ impl<N, P> HighLevelMixer<N, P> {
         for (ch_index, (connect_to, &rt_index)) in output.connect_to.iter().zip_eq(output.rt_channels.iter()).enumerate() {
             let port_name = format!("to_{}_{:02}", output.name, ch_index+1);
             self.rt_outputs[rt_index].set_name(&port_name).unwrap();
-            let _ = self.jack_client.as_client().connect_ports_by_name(&self.rt_outputs[rt_index].name().unwrap(), connect_to);
+            for pn in connect_to {
+                let _ = self.jack_client.as_client().connect_ports_by_name(&self.rt_outputs[rt_index].name().unwrap(), pn);
+            }
         }
+        let s = serde_json::to_string(&get_connections_of_endpoint(output, &self.rt_outputs)).unwrap();
+        let _ = self.to_mqtt.try_send(ToMQTT {
+            topic: format!("status/out{:03}/connected_to", index+1), value: s.into(), important: true
+        });
     }
     fn update_input(&mut self, index: usize) {
         let input = &self.inputs[index];
         for (ch_index, (connect_to, &rt_index)) in input.connect_to.iter().zip_eq(input.rt_channels.iter()).enumerate() {
             let port_name = format!("from_{}_{:02}", input.name, ch_index+1);
             self.rt_inputs[rt_index].set_name(&port_name).unwrap();
-            let _ = self.jack_client.as_client().connect_ports_by_name(connect_to, &self.rt_inputs[rt_index].name().unwrap());
+            for pn in connect_to {
+                let _ = self.jack_client.as_client().connect_ports_by_name(pn, &self.rt_inputs[rt_index].name().unwrap());
+            }
         }
+        let s = serde_json::to_string(&get_connections_of_endpoint(input, &self.rt_inputs)).unwrap();
+        let _ = self.to_mqtt.try_send(ToMQTT {
+            topic: format!("status/in{:03}/connected_to", index+1), value: s.into(), important: true
+        });
     }
     fn enable_output(&mut self, index: usize) {
         let mut rt_channels = vec![];
@@ -392,17 +406,23 @@ impl<N, P> HighLevelMixer<N, P> {
         }
     }
 }
-
+fn get_connections_of_endpoint(endpoint: &Endpoint, rt_ports: &Vec<jack::Port<jack::Unowned>>) -> Vec<Vec<String>> {
+    endpoint.rt_channels.iter().map(|&chi| {
+        rt_ports[chi].get_connections()
+    }).collect_vec()
+}
 
 struct ToMQTT {
     topic: String,
     value: String,
+    important: bool,
 }
 
 struct JackNotifications {
     xrun_counter: usize,
     to_mqtt: tokio::sync::mpsc::Sender<ToMQTT>,
-    rescan: tokio::sync::mpsc::Sender<()>,
+    rescan: Arc<AtomicUsize>,
+    report_connections: Arc<AtomicUsize>,
 }
 
 impl jack::NotificationHandler for JackNotifications {
@@ -417,7 +437,7 @@ impl jack::NotificationHandler for JackNotifications {
 
     fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
         log::info!("JACK: sample rate changed to {srate}");
-        let _ = self.to_mqtt.try_send(ToMQTT { topic: "status/sample_rate".to_owned(), value: srate.to_string() });
+        let _ = self.to_mqtt.try_send(ToMQTT { topic: "status/sample_rate".to_owned(), value: srate.to_string(), important: true });
         jack::Control::Continue
     }
 
@@ -426,16 +446,19 @@ impl jack::NotificationHandler for JackNotifications {
 
     fn port_registration(&mut self, _: &jack::Client, _port_id: jack::PortId, is_reg: bool) {
         if is_reg {
-            let _ = self.rescan.try_send(());
+            let _ = self.rescan.fetch_add(1, Ordering::Relaxed);
         }
+        let _ = self.report_connections.fetch_add(1, Ordering::Relaxed);
     }
 
     fn port_rename(&mut self, _: &jack::Client, _port_id: jack::PortId, _old_name: &str, _new_name: &str) -> jack::Control {
-        let _ = self.rescan.try_send(());
+        let _ = self.rescan.fetch_add(1, Ordering::Relaxed);
+        let _ = self.report_connections.fetch_add(1, Ordering::Relaxed);
         jack::Control::Continue
     }
 
     fn ports_connected(&mut self, _: &jack::Client, _port_id_a: jack::PortId, _port_id_b: jack::PortId, _are_connected: bool) {
+        let _ = self.report_connections.fetch_add(1, Ordering::Relaxed);
     }
 
     fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
@@ -445,7 +468,7 @@ impl jack::NotificationHandler for JackNotifications {
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
         log::info!("JACK: xrun occurred");
         self.xrun_counter += 1;
-        let _ = self.to_mqtt.try_send(ToMQTT { topic: "status/xruns".to_owned(), value: self.xrun_counter.to_string() });
+        let _ = self.to_mqtt.try_send(ToMQTT { topic: "status/xruns".to_owned(), value: self.xrun_counter.to_string(), important: true });
         jack::Control::Continue
     }
 }
@@ -459,13 +482,13 @@ struct Args {
     root: String,
     #[arg(long, short, default_value("mtxmx"))]
     jack_client: String,
-    #[arg(long, default_value("16"))]
+    #[arg(long, short, default_value("16"))]
     input_channels_max: usize,
-    #[arg(long, default_value("16"))]
+    #[arg(long, short, default_value("16"))]
     output_channels_max: usize,
-    #[arg(long, default_value("16"))]
+    #[arg(long, short('I'), default_value("16"))]
     input_endpoints_max: usize,
-    #[arg(long, default_value("16"))]
+    #[arg(long, short('O'), default_value("16"))]
     output_endpoints_max: usize,
 }
 
@@ -499,12 +522,12 @@ async fn main() {
         output_ports: RefCell::new((0..args.output_channels_max).map(|i|jack_client.register_port(&format!("never_used_o{i:04}"), jack::AudioOut::default()).unwrap()).collect()),
         input_ports: (0..args.input_channels_max).map(|i|jack_client.register_port(&format!("never_used_i{i:04}"), jack::AudioIn::default()).unwrap()).collect(),
     };
-    let rt_outputs = rt_internal.output_ports.get_mut().iter().map(|port|port.clone_unowned()).collect();
-    let rt_inputs = rt_internal.input_ports.iter().map(|port|port.clone_unowned()).collect();
+    let rt_outputs: Vec<_> = rt_internal.output_ports.get_mut().iter().map(|port|port.clone_unowned()).collect();
+    let rt_inputs: Vec<_> = rt_internal.input_ports.iter().map(|port|port.clone_unowned()).collect();
 
-
-    let (to_mqtt_sender, mut to_mqtt_receiver) = tokio::sync::mpsc::channel(100);
-    let (rescan_sender, mut rescan_receiver) = tokio::sync::mpsc::channel(100);
+    let (to_mqtt_sender, mut to_mqtt_receiver) = tokio::sync::mpsc::channel(4096);
+    let rescan_counter: Arc<AtomicUsize> = Default::default();
+    let report_connections_counter: Arc<AtomicUsize> = Default::default();
 
     let rt_mixer1 = rt_mixer.clone();
     let process_callback = move |client: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
@@ -512,7 +535,7 @@ async fn main() {
         jack::Control::Continue
     };
     let jack_process = jack::contrib::ClosureProcessHandler::new(process_callback);
-    let active_client = jack_client.activate_async(JackNotifications { xrun_counter: 0, to_mqtt: to_mqtt_sender, rescan: rescan_sender }, jack_process).unwrap();
+    let active_client = jack_client.activate_async(JackNotifications { xrun_counter: 0, to_mqtt: to_mqtt_sender.clone(), rescan: rescan_counter.clone(), report_connections: report_connections_counter.clone() }, jack_process).unwrap();
 
     let mut mixer = HighLevelMixer {
         matrix: Matrix::new(args.output_endpoints_max, args.input_endpoints_max),
@@ -522,14 +545,38 @@ async fn main() {
         rt_inputs,
         rt: rt_mixer.clone(),
         jack_client: active_client,
+        to_mqtt: to_mqtt_sender.clone(),
     };
-    let _ = control_client.publish_bytes(prefix.clone() + "status/sample_rate", QoS::AtLeastOnce, true, mixer.jack_client.as_client().sample_rate().to_string().into()).await;
-    let _ = control_client.publish_bytes(prefix.clone() + "status/xruns", QoS::AtLeastOnce, true, "0".into()).await;
+
+    let control_client1 = control_client.clone();
+    let prefix1 = prefix.clone();
+    std::thread::Builder::new().spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                loop {
+                    let pkt = to_mqtt_receiver.recv().await;
+                    if let Some(pkt) = pkt {
+                        let _ = control_client1.publish_bytes(prefix1.clone() + &pkt.topic, if pkt.important { QoS::AtLeastOnce } else { QoS::AtMostOnce }, pkt.important, pkt.value.into()).await;
+                    } else {
+                        break;
+                    }
+                }
+            });
+    }).unwrap();
+
+    to_mqtt_sender.send(ToMQTT{ topic: "status/sample_rate".into(), value: mixer.jack_client.as_client().sample_rate().to_string(), important: true }).await.unwrap();
+    to_mqtt_sender.send(ToMQTT{ topic: "status/xruns".into(), value: "0".into(), important: true }).await.unwrap();
 
     let mut meter_updater = tokio::time::interval(Duration::from_millis(125));
     meter_updater.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut already_received = BTreeSet::new();
+    let mut last_rescan: usize = 0;
+    let mut last_report_connections: usize = 0;
     loop {
+        //log::debug!("loop iter");
         tokio::select! {
             r = eventloop.poll() => {
                 match r {
@@ -571,20 +618,40 @@ async fn main() {
                         } else {
                             0.0
                         };
-                        
-                        let _ = control_client.publish_bytes(path, QoS::AtMostOnce, false, lin_to_db(signal_level).to_string().into()).await;
+                        to_mqtt_sender.send(ToMQTT { topic: path, value: lin_to_db(signal_level).to_string(), important: false }).await.unwrap();
                     }
                 }
-            },
-            _ = rescan_receiver.recv() => {
-                mixer.rescan_ports();
-            }
-            msg_opt = to_mqtt_receiver.recv() => {
-                if let Some(msg) = msg_opt {
-                    let _ = control_client.publish_bytes(prefix.clone() + &msg.topic, QoS::AtLeastOnce, true, msg.value.into()).await;
+                let rescan = rescan_counter.load(Ordering::Relaxed);
+                if rescan != last_rescan {
+                    last_rescan = rescan;
+                    mixer.rescan_ports();
                 }
-            }
-            
+                let report = report_connections_counter.load(Ordering::Relaxed);
+                if report != last_report_connections {
+                    last_report_connections = report;
+                    for (index, output) in mixer.outputs.iter().enumerate() {
+                        let s = serde_json::to_string(&get_connections_of_endpoint(output, &mut mixer.rt_outputs)).unwrap();
+                        to_mqtt_sender.send(ToMQTT { 
+                            topic: format!("status/out{:03}/connected_to", index+1), value: s.into(), important: true
+                        }).await.unwrap();
+                    }
+                    for (index, input) in mixer.inputs.iter().enumerate() {
+                        let s = serde_json::to_string(&get_connections_of_endpoint(input, &mut mixer.rt_inputs)).unwrap();
+                        to_mqtt_sender.send(ToMQTT { 
+                            topic: format!("status/in{:03}/connected_to", index+1), value: s.into(), important: true
+                        }).await.unwrap();
+                    }
+                    let own_prefix = mixer.jack_client.as_client().name().to_owned() + ":";
+                    let send_ports = |flags, topic| {
+                        let s = serde_json::to_string(&mixer.jack_client.as_client().ports(None, Some("32 bit float mono audio"), flags).iter().filter(|pn|!pn.starts_with(&own_prefix)).collect_vec()).unwrap();
+                        to_mqtt_sender.send(ToMQTT { 
+                            topic, value: s, important: true
+                        })
+                    };
+                    send_ports(PortFlags::IS_OUTPUT, "status/all_sources".into()).await.unwrap();
+                    send_ports(PortFlags::IS_INPUT, "status/all_sinks".into()).await.unwrap();
+                }
+            },
         }
     }
 }
