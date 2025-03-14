@@ -1,0 +1,3 @@
+[submodule "rust-jack"]
+	path = rust-jack
+	url = https://github.com/RustAudio/rust-jack

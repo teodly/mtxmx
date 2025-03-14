@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use atomic_float::AtomicF32;
 use clap::Parser;
 use itertools::Itertools;
-use jack::PortFlags;
+use jack::{PortFlags, Unowned};
 use log::error;
 use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
 
@@ -36,9 +36,9 @@ struct Matrix<T> {
 }
 
 impl<T: Default> Matrix<T> {
-    pub fn new(outputs_count: usize, inputs_count: usize) -> Self {
+    pub fn new(outputs_count: usize, inputs_count: usize, create_item_cb: impl Fn() -> T) -> Self {
         Self {
-            flat: (0..outputs_count * inputs_count).map(|_|T::default()).collect(),
+            flat: (0..outputs_count * inputs_count).map(|_|create_item_cb()).collect(),
             outputs_count,
             inputs_count,
         }
@@ -84,12 +84,19 @@ fn print_matrix(matrix: &Matrix<AtomicF32>) {
     println!("---end of matrix---");
 }
 
+struct Limiter {
+    threshold: AtomicF32,
+    time_constant: AtomicF32,
+    gain: AtomicF32,
+}
+
 struct RealTimeMixer {
     matrix: Matrix<AtomicF32>,
     //matrix_meters: Matrix<AtomicF32>,
     input_meters: Vec<AtomicF32>,
     active_outputs: Vec<AtomicBool>,
     active_inputs: Vec<AtomicBool>,
+    output_limiters: Vec<Limiter>,
 }
 
 struct RealTimeInternal {
@@ -127,6 +134,20 @@ impl RealTimeMixer {
                 }
                 //self.matrix_meters.cell(output_index, input_index).fetch_max(peak, Ordering::Relaxed);
             }
+            let limiter = &self.output_limiters[output_index];
+            let threshold = limiter.threshold.load(Ordering::Relaxed);
+            let time_constant = limiter.time_constant.load(Ordering::Relaxed);
+            let mut gain = limiter.gain.load(Ordering::Relaxed);
+            for sample in output_slice.iter_mut() {
+                *sample *= gain;
+                if (*sample).abs() > threshold {
+                    gain = threshold / (*sample).abs();
+                    *sample = threshold * sample.signum();
+                } else {
+                    gain = (gain + time_constant).min(1.0);
+                }
+            }
+            limiter.gain.store(gain, Ordering::Relaxed);
         }
         for (input_index, input_port) in internal.input_ports.iter().zip_eq(&self.active_inputs).enumerate().filter(|(_, (_, a))|a.load(Ordering::Relaxed)).map(|(i, (p, _))|(i, p)) {
             self.input_meters[input_index].fetch_max(input_port.as_slice(ps).iter().map(|v|v.abs()).reduce(f32::max).unwrap(), Ordering::Relaxed);
@@ -160,6 +181,16 @@ fn db_to_lin(db: f32) -> f32 {
 }
 fn lin_to_db(lin: f32) -> f32 {
     20.0 * f32::log10(lin)
+}
+
+
+fn rename_port(port: &mut jack::Port<Unowned>, name: &str) {
+    //let name = format!("mtxmx:{name}");
+    let _ = port.set_name(&name);
+    /*for alias in port.aliases().unwrap_or_else(|_|vec![]) {
+        let _ = port.unset_alias(&alias);
+    } */
+    let _ = port.set_alias(&name);
 }
 
 struct HighLevelMixer<N, P> {
@@ -278,6 +309,26 @@ impl<N, P> HighLevelMixer<N, P> {
                                 return false;
                             }
                         }
+                    } else if parts.len()==4 && parts[2]=="limiter" && out_id_opt.is_some() {
+                        let out_index = out_id_opt.unwrap() - 1;
+                        let v = match value.parse::<f32>() {
+                            Ok(v) => v,
+                            Err(_) => return false,
+                        };
+                        for &chi in &self.outputs[out_index].rt_channels {
+                            let limiter = &self.rt.output_limiters[chi];
+                            match parts[3] {
+                                "threshold" => {
+                                    limiter.threshold.store(v, Ordering::Relaxed);
+                                    return true;
+                                },
+                                "release_speed" => {
+                                    limiter.time_constant.store(v, Ordering::Relaxed);
+                                    return true;
+                                },
+                                _ => return false
+                            }
+                        }
                     }
                 }
             }
@@ -325,7 +376,7 @@ impl<N, P> HighLevelMixer<N, P> {
             for conn in self.rt_outputs[chi].get_connections() {
                 let _ = self.jack_client.as_client().disconnect_ports_by_name(&self.rt_outputs[chi].name().unwrap(), &conn);
             }
-            self.rt_outputs[chi].set_name(&format!("unused_o{chi:04}")).unwrap();
+            rename_port(&mut self.rt_outputs[chi], &format!("unused_o{chi:04}"));
             self.rt.active_outputs[chi].store(false, Ordering::Relaxed);
         }
         self.outputs[index].connect_to.clear();
@@ -339,7 +390,7 @@ impl<N, P> HighLevelMixer<N, P> {
             for conn in self.rt_inputs[chi].get_connections() {
                 let _ = self.jack_client.as_client().disconnect_ports_by_name(&conn, &self.rt_inputs[chi].name().unwrap());
             }
-            self.rt_inputs[chi].set_name(&format!("unused_i{chi:04}")).unwrap();
+            rename_port(&mut self.rt_inputs[chi], &format!("unused_i{chi:04}"));
             self.rt.active_inputs[chi].store(false, Ordering::Relaxed);
         }
         self.inputs[index].connect_to.clear();
@@ -349,7 +400,7 @@ impl<N, P> HighLevelMixer<N, P> {
         let output = &self.outputs[index];
         for (ch_index, (connect_to, &rt_index)) in output.connect_to.iter().zip_eq(output.rt_channels.iter()).enumerate() {
             let port_name = format!("to_{}_{:02}", output.name, ch_index+1);
-            self.rt_outputs[rt_index].set_name(&port_name).unwrap();
+            rename_port(&mut self.rt_outputs[rt_index], &port_name);
             for pn in connect_to {
                 let _ = self.jack_client.as_client().connect_ports_by_name(&self.rt_outputs[rt_index].name().unwrap(), pn);
             }
@@ -363,7 +414,7 @@ impl<N, P> HighLevelMixer<N, P> {
         let input = &self.inputs[index];
         for (ch_index, (connect_to, &rt_index)) in input.connect_to.iter().zip_eq(input.rt_channels.iter()).enumerate() {
             let port_name = format!("from_{}_{:02}", input.name, ch_index+1);
-            self.rt_inputs[rt_index].set_name(&port_name).unwrap();
+            rename_port(&mut self.rt_inputs[rt_index], &port_name);
             for pn in connect_to {
                 let _ = self.jack_client.as_client().connect_ports_by_name(pn, &self.rt_inputs[rt_index].name().unwrap());
             }
@@ -503,7 +554,7 @@ async fn main() {
     let mut mqttoptions = MqttOptions::parse_url(args.url).expect("failed to parse mqtt url");
     mqttoptions.set_keep_alive(Duration::from_secs(2));
 
-    let (control_client, mut eventloop) = AsyncClient::new(mqttoptions, 100);
+    let (control_client, mut eventloop) = AsyncClient::new(mqttoptions, 2048);
     control_client.subscribe(args.root.clone() + "/#", QoS::AtLeastOnce).await.expect("failed to subscribe");
     let prefix = if args.root.is_empty() { "".to_owned() } else { args.root + "/" };
 
@@ -512,15 +563,20 @@ async fn main() {
     jack::Client::new(&args.jack_client, jack::ClientOptions::default()).unwrap();
 
     let rt_mixer = Arc::new(RealTimeMixer {
-        matrix: Matrix::new(args.output_channels_max, args.input_channels_max),
+        matrix: Matrix::new(args.output_channels_max, args.input_channels_max, ||1.0.into()),
         //matrix_meters: Matrix::new(args.output_channels_max, args.input_channels_max),
         input_meters: (0..args.input_channels_max).map(|_|0.0.into()).collect(),
         active_outputs: (0..args.output_channels_max).map(|_|false.into()).collect(),
         active_inputs: (0..args.input_channels_max).map(|_|false.into()).collect(),
+        output_limiters: (0..args.output_channels_max).map(|_|Limiter {
+            threshold: 1.0.into(),
+            time_constant: (1.0/48000.0).into(),
+            gain: 1.0.into(),
+        }).collect(),
     });
     let mut rt_internal = RealTimeInternal {
-        output_ports: RefCell::new((0..args.output_channels_max).map(|i|jack_client.register_port(&format!("never_used_o{i:04}"), jack::AudioOut::default()).unwrap()).collect()),
-        input_ports: (0..args.input_channels_max).map(|i|jack_client.register_port(&format!("never_used_i{i:04}"), jack::AudioIn::default()).unwrap()).collect(),
+        output_ports: RefCell::new((0..args.output_channels_max).map(|i|jack_client.register_port(&format!("raw_out{i:04}"), jack::AudioOut::default()).unwrap()).collect()),
+        input_ports: (0..args.input_channels_max).map(|i|jack_client.register_port(&format!("raw_in{i:04}"), jack::AudioIn::default()).unwrap()).collect(),
     };
     let rt_outputs: Vec<_> = rt_internal.output_ports.get_mut().iter().map(|port|port.clone_unowned()).collect();
     let rt_inputs: Vec<_> = rt_internal.input_ports.iter().map(|port|port.clone_unowned()).collect();
@@ -538,7 +594,9 @@ async fn main() {
     let active_client = jack_client.activate_async(JackNotifications { xrun_counter: 0, to_mqtt: to_mqtt_sender.clone(), rescan: rescan_counter.clone(), report_connections: report_connections_counter.clone() }, jack_process).unwrap();
 
     let mut mixer = HighLevelMixer {
-        matrix: Matrix::new(args.output_endpoints_max, args.input_endpoints_max),
+        matrix: Matrix::new(args.output_endpoints_max, args.input_endpoints_max, || MatrixPoint {
+            enabled: false, level: 1.0
+        }),
         outputs: (0..args.output_endpoints_max).map(|i|Endpoint { name: format!("out{:03}", i+1), gain: 1.0, connect_to: vec![], rt_channels: vec![] }).collect(),
         inputs: (0..args.input_endpoints_max).map(|i|Endpoint { name: format!("in{:03}", i+1), gain: 1.0, connect_to: vec![], rt_channels: vec![] }).collect(),
         rt_outputs,
@@ -584,9 +642,11 @@ async fn main() {
                         if let Some(path) = packet.topic.strip_prefix(&prefix) {
                             if let Some(ack_path) = path.strip_suffix("/set") {
                                 let parts: Vec<_> = ack_path.split('/').collect();
-                                let ack = mixer.on_topic_update(parts, &String::from_utf8_lossy(&packet.payload));
+                                let payload = String::from_utf8_lossy(&packet.payload).to_string();
+                                let ack = mixer.on_topic_update(parts, &payload);
                                 if ack {
-                                    let _ = control_client.publish_bytes(prefix.clone() + ack_path, QoS::AtLeastOnce, true, packet.payload).await;
+                                    to_mqtt_sender.send(ToMQTT { topic: ack_path.to_owned(), value: payload, important: true }).await.unwrap();
+                                    //let _ = control_client.publish_bytes(prefix.clone() + ack_path, QoS::AtLeastOnce, true, packet.payload).await;
                                 }
                             } else if !already_received.contains(path) {
                                 mixer.on_topic_update(path.split('/').collect(), &String::from_utf8_lossy(&packet.payload));
@@ -609,7 +669,7 @@ async fn main() {
                     for (input_index, input) in mixer.inputs.iter().enumerate() {
                         if input.rt_channels.is_empty() { continue; }
                         let input_id = input_index+1;
-                        let path = format!("{prefix}out{output_id:03}/in{input_id:03}/meter");
+                        let path = format!("out{output_id:03}/in{input_id:03}/meter");
                         let point = mixer.matrix.cell(output_index, input_index);
 
                         let signal_level = if point.enabled {
@@ -620,6 +680,9 @@ async fn main() {
                         };
                         to_mqtt_sender.send(ToMQTT { topic: path, value: lin_to_db(signal_level).to_string(), important: false }).await.unwrap();
                     }
+                    let gain_reduction = -20.0 * (mixer.rt.output_limiters[output_index].gain.load(Ordering::Relaxed).log10());
+                    let path = format!("out{output_id:03}/limiter/gain_reduction");
+                    to_mqtt_sender.send(ToMQTT { topic: path, value: gain_reduction.to_string(), important: false }).await.unwrap();
                 }
                 let rescan = rescan_counter.load(Ordering::Relaxed);
                 if rescan != last_rescan {
