@@ -160,6 +160,7 @@ const MAX_CHANNELS_PER_ENDPOINT: usize = 16;
 struct Endpoint {
     pub name: String,
     pub gain: f32,
+    pub enabled: bool,
     pub connect_to: Vec<Vec<String>>,
     pub rt_channels: Vec<usize>,
 }
@@ -204,28 +205,39 @@ struct HighLevelMixer<N, P> {
     to_mqtt: tokio::sync::mpsc::Sender<ToMQTT>,
 }
 
+fn str_to_bool(s: &str) -> Option<bool> {
+    let is_on = s.eq_ignore_ascii_case("true") || s.eq_ignore_ascii_case("on");
+    let is_off = s.eq_ignore_ascii_case("false") || s.eq_ignore_ascii_case("off");
+    if !(is_on || is_off) {
+        return None;
+    }
+    Some(is_on)
+}
+
 impl<N, P> HighLevelMixer<N, P> {
     fn on_topic_update(&mut self, parts: Vec<&str>, value: &str) -> bool {
         log::debug!("on_topic_update {parts:?}");
         if parts.len() >= 2 {
             if let Some(out_id) = parts[0].strip_prefix("out").map(|s|s.parse::<usize>().ok()).flatten() {
+                let out_index = out_id-1;
+                if out_index >= self.outputs.len() {
+                    return false;
+                }
                 if let Some(in_id) = parts[1].strip_prefix("in").map(|s|s.parse::<usize>().ok()).flatten() {
+                    if out_id < 1 || in_id < 1 {
+                        return false;
+                    }
+                    let in_index = in_id-1;
+                    if in_index >= self.inputs.len() {
+                        return false;
+                    }
                     if parts.len() == 3 {
-                        if out_id < 1 || in_id < 1 {
-                            return false;
-                        }
-                        let out_index = out_id-1;
-                        let in_index = in_id-1;
-                        if out_index >= self.outputs.len() || in_index >= self.inputs.len() {
-                            return false;
-                        }
                         match parts[2] {
                             "state" => {
-                                let is_on = value.eq_ignore_ascii_case("true") || value.eq_ignore_ascii_case("on");
-                                let is_off = value.eq_ignore_ascii_case("false") || value.eq_ignore_ascii_case("off");
-                                if !(is_on || is_off) {
-                                    return false;
-                                }
+                                let is_on = match str_to_bool(value) {
+                                    Some(v) => v,
+                                    None => return false,
+                                };
                                 self.matrix.cell_mut(out_index, in_index).enabled = is_on;
                                 self.commit_point(out_index, in_index);
                                 print_matrix(&self.rt.matrix);
@@ -243,6 +255,43 @@ impl<N, P> HighLevelMixer<N, P> {
                                 return false;
                             }
                         }
+                    }
+                } else {
+                    if parts.len() == 2 {
+                        match parts[1] {
+                            "state" => {
+                                let is_on = match str_to_bool(value) {
+                                    Some(v) => v,
+                                    None => return false,
+                                };
+                                self.outputs[out_index].enabled = is_on;
+                                self.commit_output(out_index);
+                                print_matrix(&self.rt.matrix);
+                                return true;
+                            }
+                            _ => return false
+                        }
+                    }
+                }
+            }
+            if let Some(in_id) = parts[0].strip_prefix("in").map(|s|s.parse::<usize>().ok()).flatten() {
+                let in_index = in_id-1;
+                if in_index >= self.inputs.len() {
+                    return false;
+                }
+                if parts.len() == 2 {
+                    match parts[1] {
+                        "state" => {
+                            let is_on = match str_to_bool(value) {
+                                Some(v) => v,
+                                None => return false,
+                            };
+                            self.inputs[in_index].enabled = is_on;
+                            self.commit_input(in_index);
+                            print_matrix(&self.rt.matrix);
+                            return true;
+                        }
+                        _ => return false
                     }
                 }
             }
@@ -342,7 +391,7 @@ impl<N, P> HighLevelMixer<N, P> {
             return;
         }
         let point = self.matrix.cell(out_index, in_index);
-        let level = if point.enabled { point.level * input.gain * output.gain } else { 0.0 };
+        let level = if point.enabled && input.enabled && output.enabled { point.level * input.gain * output.gain } else { 0.0 };
         if output.rt_channels.len() == input.rt_channels.len() {
             // stereo -> stereo: identity matrix
             for (rt_out_index, rt_in_index) in itertools::zip_eq(&output.rt_channels, &input.rt_channels) {
@@ -597,8 +646,8 @@ async fn main() {
         matrix: Matrix::new(args.output_endpoints_max, args.input_endpoints_max, || MatrixPoint {
             enabled: false, level: 1.0
         }),
-        outputs: (0..args.output_endpoints_max).map(|i|Endpoint { name: format!("out{:03}", i+1), gain: 1.0, connect_to: vec![], rt_channels: vec![] }).collect(),
-        inputs: (0..args.input_endpoints_max).map(|i|Endpoint { name: format!("in{:03}", i+1), gain: 1.0, connect_to: vec![], rt_channels: vec![] }).collect(),
+        outputs: (0..args.output_endpoints_max).map(|i|Endpoint { name: format!("out{:03}", i+1), gain: 1.0, enabled: true, connect_to: vec![], rt_channels: vec![] }).collect(),
+        inputs: (0..args.input_endpoints_max).map(|i|Endpoint { name: format!("in{:03}", i+1), gain: 1.0, enabled: true, connect_to: vec![], rt_channels: vec![] }).collect(),
         rt_outputs,
         rt_inputs,
         rt: rt_mixer.clone(),
