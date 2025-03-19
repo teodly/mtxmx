@@ -17,13 +17,15 @@ mtxmx --root ROOT_TOPIC --url mqtt://localhost?client_id=mtxmx
 To set the value, append `/set` to the topic, MTXMX will reply retained message without `/set` if the command and argument was valid. Also, when MTXMX receives retained messages for the first time, it will process them even if they don't end with `/set`.
 
 * `ROOT_TOPIC/config/ENDPOINT_ID/gain` - dB gain of the given input or output
-* `ROOT_TOPIC/config/ENDPOINT_ID/connect_to` - JSON array containing names of JACK ports to connect to. Setting it is necessary - MTXMX gets number of channels per endpoint from this value. Specify empty strings if you don't want MTXMX to connect ports.
-
+* `ROOT_TOPIC/config/ENDPOINT_ID/connect_to` - 2-dimensional array containing names of JACK ports to connect to. The root array contains subarrays. Each subarray corresponds to a single channel and its elements are port names to connect this channel to. Setting it is necessary - MTXMX gets number of channels per endpoint from this value. Specify empty subarrays if you don't want MTXMX to connect ports.
 * `ROOT_TOPIC/OUT_ENDPOINT_ID/IN_ENDPOINT_ID/level` - dB gain of this send (matrix point)
 * `ROOT_TOPIC/OUT_ENDPOINT_ID/IN_ENDPOINT_ID/state` - `on` or `true` to enable, `off` or `false` to disable this send
+* `ROOT_TOPIC/ENDPOINT_ID/state` - enable or mute the whole input or output - `on` or `true` to enable, `off` or `false` to mute
+
 
 ### from MTXMX
 
 * `ROOT_TOPIC/status/sample_rate`
 * `ROOT_TOPIC/status/xruns` - JACK xruns occurred since MTXMX start
+* `ROOT_TOPIC/status/ENDPOINT_ID/connected_to` - format as in `ENDPOINT_ID/connect_to`, but reporting the ports that MTXMX is actually connected to
 * `ROOT_TOPIC/OUT_ENDPOINT_ID/IN_ENDPOINT_ID/meter` - dB signal level (meter)
