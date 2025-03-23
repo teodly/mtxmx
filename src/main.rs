@@ -394,6 +394,12 @@ impl<N, P> HighLevelMixer<N, P> {
         let level = if point.enabled && input.enabled && output.enabled { point.level * input.gain * output.gain } else { 0.0 };
         if output.rt_channels.len() == input.rt_channels.len() {
             // stereo -> stereo: identity matrix
+            /* for (i, rt_out_index) in output.rt_channels.iter().enumerate() {
+                for (j, rt_in_index) in input.rt_channels.iter().enumerate() {
+                    self.rt.set_level(*rt_out_index, *rt_in_index, if i==j { level } else { 0.0 });
+                }
+            } */
+            // no need to reset everything to 0 because points are cleared before use
             for (rt_out_index, rt_in_index) in itertools::zip_eq(&output.rt_channels, &input.rt_channels) {
                 self.rt.set_level(*rt_out_index, *rt_in_index, level);
             }
@@ -612,7 +618,7 @@ async fn main() {
     jack::Client::new(&args.jack_client, jack::ClientOptions::default()).unwrap();
 
     let rt_mixer = Arc::new(RealTimeMixer {
-        matrix: Matrix::new(args.output_channels_max, args.input_channels_max, ||1.0.into()),
+        matrix: Matrix::new(args.output_channels_max, args.input_channels_max, ||0.0.into()),
         //matrix_meters: Matrix::new(args.output_channels_max, args.input_channels_max),
         input_meters: (0..args.input_channels_max).map(|_|0.0.into()).collect(),
         active_outputs: (0..args.output_channels_max).map(|_|false.into()).collect(),
