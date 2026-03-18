@@ -203,6 +203,7 @@ struct Endpoint {
     pub enabled: bool,
     pub connect_to: Vec<Vec<String>>,
     pub rt_channels: Vec<usize>,
+    pub buses: Vec<bool>,
 }
 
 struct MatrixPoint {
@@ -349,6 +350,62 @@ impl<N, P> HighLevelMixer<N, P> {
                     }
                 }
             }
+            
+            if parts[0] == "buses" && parts.len() == 4 {
+                let bus_index = if let Some(bus_id) = parts[1].strip_prefix("bus").map(|s| s.parse::<usize>().ok()).flatten() {
+                    if bus_id < 1 || bus_id > self.inputs[0].buses.len() {
+                        return false;
+                    }
+                    bus_id - 1
+                } else {
+                    return false;
+                };
+                let out_id_opt = parts[2]
+                    .strip_prefix("out")
+                    .map(|s| s.parse::<usize>().ok())
+                    .flatten();
+                let in_id_opt = parts[2]
+                    .strip_prefix("in")
+                    .map(|s| s.parse::<usize>().ok())
+                    .flatten();
+                
+                if parts[3] != "state" {
+                    return false;
+                }
+                
+                let endpoint = if let Some(out_id) = out_id_opt {
+                    if out_id < 1 || out_id > self.outputs.len() {
+                        return false;
+                    }
+                    Some(&mut self.outputs[out_id - 1])
+                } else if let Some(in_id) = in_id_opt {
+                    if in_id < 1 || in_id > self.inputs.len() {
+                        return false;
+                    }
+                    Some(&mut self.inputs[in_id - 1])
+                } else {
+                    None
+                };
+                
+                let is_on = match str_to_bool(value) {
+                    Some(v) => v,
+                    None => return false,
+                };
+                
+                if let Some(endpoint) = endpoint {
+                    endpoint.buses[bus_index] = is_on;
+                    if let Some(out_id) = out_id_opt {
+                        self.commit_output(out_id - 1);
+                    } else if let Some(in_id) = in_id_opt {
+                        self.commit_input(in_id - 1);
+                    } else {
+                        println!("BUG: no out_id or in_id for bus update");
+                    }
+                    print_matrix(&self.rt.matrix);
+                    return true;
+                }
+            };
+            
             if parts[0] == "config" {
                 let out_id_opt = parts[1]
                     .strip_prefix("out")
@@ -454,9 +511,23 @@ impl<N, P> HighLevelMixer<N, P> {
         if output.rt_channels.is_empty() || input.rt_channels.is_empty() {
             return;
         }
-        let point = self.matrix.cell(out_index, in_index);
-        let level = if point.enabled && input.enabled && output.enabled {
-            point.level * input.gain * output.gain
+        
+        let level = if input.enabled && output.enabled {
+            let point = self.matrix.cell(out_index, in_index);
+            let point_level = if point.enabled { point.level } else { 0.0 };
+            
+            let bus_level = if out_index != in_index {
+                if output.buses.iter().zip_eq(input.buses.iter()).any(|(o, i)| *o && *i) {
+                    // input enters this bus, and output is connected to that bus
+                    1.0
+                } else {
+                    0.0 // mix-minus on matrix diagonal
+                }
+            } else {
+                0.0
+            };
+            
+            point_level.max(bus_level) * input.gain * output.gain
         } else {
             0.0
         };
@@ -730,6 +801,8 @@ struct Args {
     input_endpoints_max: usize,
     #[arg(long, short('O'), default_value("16"))]
     output_endpoints_max: usize,
+    #[arg(long, short('b'), default_value("16"))]
+    buses_max: usize,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -841,6 +914,7 @@ async fn main() {
                 enabled: true,
                 connect_to: vec![],
                 rt_channels: vec![],
+                buses: vec![false; args.buses_max],
             })
             .collect(),
         inputs: (0..args.input_endpoints_max)
@@ -850,6 +924,7 @@ async fn main() {
                 enabled: true,
                 connect_to: vec![],
                 rt_channels: vec![],
+                buses: vec![false; args.buses_max],
             })
             .collect(),
         rt_outputs,
@@ -943,6 +1018,12 @@ async fn main() {
             },
             _ = meter_updater.tick() => {
                 let input_meters: Vec<_> = mixer.rt.input_meters.iter().map(|a|a.swap(0.0, Ordering::Relaxed)).collect();
+                for (input_index, input) in mixer.inputs.iter().enumerate() {
+                    let input_id = input_index+1;
+                    let path = format!("status/meters/in{input_id:03}");
+                    let levels_strings: Vec<String> = input.rt_channels.iter().map(|&ch| lin_to_db(input_meters[ch]).to_string()).collect();
+                    to_mqtt_sender.send(ToMQTT { topic: path, value: levels_strings.join(" "), important: false }).await.unwrap();
+                }
                 for (output_index, output) in mixer.outputs.iter().enumerate() {
                     if output.rt_channels.is_empty() { continue; }
                     let output_id = output_index+1;
