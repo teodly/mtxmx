@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MTXMX Input Meters</title>
+  <!--
+ Written by AI, so no authorship, no copyright, public domain.
+ 
+ This is free and unencumbered software released into the public domain.
+
+ Anyone is free to copy, modify, publish, use, compile, sell, or
+ distribute this software, either in source code form or as a compiled
+ binary, for any purpose, commercial or non-commercial, and by any
+ means.
+
+ In jurisdictions that recognize copyright laws, the author or authors
+ of this software dedicate any and all copyright interest in the
+ software to the public domain. We make this dedication for the benefit
+ of the public at large and to the detriment of our heirs and
+ successors. We intend this dedication to be an overt act of
+ relinquishment in perpetuity of all present and future rights to this
+ software under copyright law.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ OTHER DEALINGS IN THE SOFTWARE.
+
+ For more information, please refer to <https://unlicense.org>
+  -->
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: rgba(18, 26, 45, 0.96);
+      --border: #263453;
+      --border-soft: #32415f;
+      --text: #eef3ff;
+      --muted: #a9b5d1;
+      --accent: #4b8cff;
+      --ok: #2ed573;
+      --warn: #ffa502;
+      --bad: #ff4757;
+      --meter-bg: #0b1326;
+      --row-alt: rgba(255, 255, 255, 0.02);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top, rgba(105, 168, 255, 0.12), transparent 30%),
+        linear-gradient(180deg, #08101e 0%, #0b1020 50%, #0a0f19 100%);
+      color: var(--text);
+      font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      padding: 18px;
+    }
+
+    .wrap {
+      max-width: 1900px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: clamp(1.5rem, 2.5vw, 2.2rem);
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .controls {
+      margin-top: 16px;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: minmax(280px, 1.4fr) minmax(120px, 0.6fr) auto auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      min-width: 0;
+      background: #0b1324;
+      color: var(--text);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      outline: none;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(75, 140, 255, 0.18);
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .secondary {
+      background: #202c47;
+      color: white;
+      border: 1px solid var(--border-soft);
+    }
+
+    .checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin: 14px 0;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #6b7280;
+    }
+
+    .dot.connecting { background: var(--warn); }
+    .dot.connected { background: var(--ok); }
+    .muted { color: var(--muted); }
+
+    .table-wrap {
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: auto;
+      min-width: 760px;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #10182d;
+      color: var(--muted);
+      text-align: left;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+    }
+
+    tbody td {
+      padding: 8px 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      vertical-align: middle;
+    }
+
+    tbody tr:nth-child(even) {
+      background: var(--row-alt);
+    }
+
+    tbody tr.hidden {
+      display: none;
+    }
+
+    td.col-input {
+      width: 92px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    td.col-ch {
+      width: 60px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    td.col-physical {
+      
+      width: 110px;
+    }
+
+    td.col-source {
+        /*width: 340px;*/
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    td.col-meter {
+      width: 300px;
+    }
+
+    td.col-value {
+      max-width: 90px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.physical {
+      background: rgba(46, 213, 115, 0.12);
+      color: #8ff0b1;
+      border-color: rgba(46, 213, 115, 0.25);
+    }
+
+    .badge.nonphysical {
+      background: rgba(169, 181, 209, 0.08);
+      color: #d0d8ee;
+      border-color: rgba(169, 181, 209, 0.18);
+    }
+
+    .badge.unknown {
+      background: rgba(255, 165, 2, 0.12);
+      color: #ffd27d;
+      border-color: rgba(255, 165, 2, 0.24);
+    }
+
+    .meter {
+      position: relative;
+      height: 18px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--meter-bg);
+      border: 1px solid #2c3a59;
+    }
+
+    .meter::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent calc(10% - 1px),
+          rgba(255,255,255,0.08) calc(10% - 1px),
+          rgba(255,255,255,0.08) 10%
+        );
+      pointer-events: none;
+    }
+
+    .fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      background: linear-gradient(90deg, #1dd1a1 0%, #2ed573 58%, #ffa502 84%, #ff4757 100%);
+    }
+
+    .peak {
+      position: absolute;
+      top: 1px;
+      bottom: 1px;
+      left: 0%;
+      width: 3px;
+      margin-left: -1px;
+      border-radius: 999px;
+      background: white;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+    }
+
+    .empty {
+      margin-top: 14px;
+      padding: 24px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed var(--border-soft);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    @media (max-width: 980px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      .button-row button {
+        flex: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>MTXMX Input Peak Meters</h1>
+    <p class="subtitle">
+      Compact table view with one meter per row. Connects directly to your MQTT broker over WebSocket and listens to
+      <span class="mono">status/meters/inNNN</span> and
+      <span class="mono">status/inNNN/connected_to</span>.
+    </p>
+
+    <div class="panel controls">
+      <div class="field">
+        <label for="wsUrl">MQTT WebSocket URL</label>
+        <input id="wsUrl" type="text" placeholder="ws://localhost:9001/mqtt">
+      </div>
+
+      <div class="field">
+        <label for="root">MQTT root</label>
+        <input id="root" type="text" placeholder="mtxmx">
+      </div>
+
+      <div class="button-row">
+        <button id="connectBtn" class="primary" type="button">Connect</button>
+        <button id="disconnectBtn" class="secondary" type="button">Disconnect</button>
+      </div>
+
+      <label class="checkbox">
+        <input id="onlyPhysical" type="checkbox" checked>
+        <span>Only physical inputs</span>
+      </label>
+    </div>
+
+    <div class="toolbar">
+      <div class="pill">
+        <span id="dot" class="dot"></span>
+        <strong id="status">Disconnected</strong>
+      </div>
+      <div id="stats" class="muted">0 rows visible</div>
+    </div>
+
+    <div class="panel table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Input</th>
+            <th>Ch</th>
+            <th>Type</th>
+            <th>Source</th>
+            <th>Meter</th>
+            <th>dB</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div id="empty" class="empty">
+      Connect to the broker to receive retained connection metadata and live meter updates.
+    </div>
+  </div>
+
+  <script src="./mqtt.min.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const ui = {
+      wsUrl: $("wsUrl"),
+      root: $("root"),
+      connectBtn: $("connectBtn"),
+      disconnectBtn: $("disconnectBtn"),
+      onlyPhysical: $("onlyPhysical"),
+      dot: $("dot"),
+      status: $("status"),
+      stats: $("stats"),
+      rows: $("rows"),
+      empty: $("empty")
+    };
+
+    const qs = new URLSearchParams(location.search);
+    const store = {
+      url: "mtxmx.html.wsUrl",
+      root: "mtxmx.html.root",
+      filter: "mtxmx.html.onlyPhysical"
+    };
+
+    const inputs = new Map();
+    const rowMap = new Map();
+    let client = null;
+
+    ui.wsUrl.value =
+      qs.get("ws") ||
+      localStorage.getItem(store.url) ||
+      ((location.protocol === "https:" ? "wss://" : "ws://") +
+        (location.hostname || "localhost") +
+        ":9001");
+
+    ui.root.value =
+      qs.get("root") ||
+      localStorage.getItem(store.root) ||
+      "mtxmx";
+
+    ui.onlyPhysical.checked =
+      (qs.get("onlyPhysical") ||
+        localStorage.getItem(store.filter) ||
+        "false") !== "false";
+
+    function setStatus(mode, text) {
+      ui.dot.className = "dot";
+      if (mode) ui.dot.classList.add(mode);
+      ui.status.textContent = text;
+    }
+
+    function escRe(value) {
+      return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function meterPercent(db) {
+      if (!Number.isFinite(db)) return 0;
+      return ((clamp(db, -60, 6) + 60) / 66) * 100;
+    }
+
+    function formatDb(db) {
+      return Number.isFinite(db) ? db.toFixed(1) + " dB" : "-∞ dB";
+    }
+
+    function parseDb(token) {
+      const s = String(token).trim().toLowerCase();
+      if (!s) return -Infinity;
+      if (s === "-inf" || s === "-infinity") return -Infinity;
+      if (s === "inf" || s === "+inf" || s === "infinity" || s === "+infinity") return Infinity;
+      if (s === "nan") return -Infinity;
+      const n = Number(s);
+      return Number.isNaN(n) ? -Infinity : n;
+    }
+
+    function flattenConnections(conns) {
+      return Array.isArray(conns)
+        ? conns.flatMap((x) => Array.isArray(x) ? x.map(String) : [])
+        : [];
+    }
+
+    function unique(values) {
+      return [...new Set(values)];
+    }
+
+    function looksPhysical(name) {
+      return /(system:capture|capture[_:-]?\d+|hw:|alsa|analog|mic|line|adc)/i.test(name);
+    }
+
+    function summarizeConnections(conns) {
+      const names = unique(flattenConnections(conns));
+      return names.length ? names.join(" · ") : "-";
+    }
+
+    function inputLabel(id) {
+      return "in" + String(id).padStart(3, "0");
+    }
+
+    function sourceLabel(input, channelIndex) {
+      const chConns = Array.isArray(input.conns) && Array.isArray(input.conns[channelIndex])
+        ? unique(input.conns[channelIndex].map(String))
+        : [];
+      return chConns.length ? chConns.join(" · ") : "-";
+    }
+
+    function badgeMarkup(physical) {
+      if (physical === true) return '<span class="badge physical">physical</span>';
+      if (physical === false) return '<span class="badge nonphysical">non-physical</span>';
+      return '<span class="badge unknown">unknown</span>';
+    }
+
+    function ensureInput(id) {
+      if (inputs.has(id)) return inputs.get(id);
+
+      const data = {
+        id,
+        conns: null,
+        physical: null,
+        shown: []
+      };
+
+      inputs.set(id, data);
+      rebuildRows();
+      return data;
+    }
+
+    function rowKey(inputId, channelIndex) {
+      return inputId + ":" + channelIndex;
+    }
+
+    function clearData() {
+      inputs.clear();
+      rowMap.clear();
+      ui.rows.replaceChildren();
+      applyFilter();
+    }
+
+    function channelCountForInput(input) {
+      return Math.max(
+        input.shown.length,
+        Array.isArray(input.conns) ? input.conns.length : 0,
+        1
+      );
+    }
+
+    function orderedRowDescriptors() {
+      const out = [];
+      const orderedInputs = [...inputs.values()].sort((a, b) => a.id - b.id);
+
+      for (const input of orderedInputs) {
+        const count = channelCountForInput(input);
+        for (let i = 0; i < count; i++) {
+          out.push({ input, channelIndex: i, key: rowKey(input.id, i) });
+        }
+      }
+
+      return out;
+    }
+
+    function rebuildRows() {
+      const descriptors = orderedRowDescriptors();
+      const nextKeys = new Set(descriptors.map((x) => x.key));
+
+      for (const [key, row] of rowMap.entries()) {
+        if (!nextKeys.has(key)) {
+          row.remove();
+          rowMap.delete(key);
+        }
+      }
+
+      for (const desc of descriptors) {
+        let row = rowMap.get(desc.key);
+
+        if (!row) {
+          row = document.createElement("tr");
+          row.dataset.key = desc.key;
+          row.innerHTML =
+            '<td class="col-input"></td>' +
+            '<td class="col-ch"></td>' +
+            '<td class="col-physical"></td>' +
+            '<td class="col-source"></td>' +
+            '<td class="col-meter"><div class="meter"><div class="fill"></div><div class="peak"></div></div></td>' +
+            '<td class="col-value"></td>';
+          row._cells = {
+            input: row.querySelector(".col-input"),
+            channel: row.querySelector(".col-ch"),
+            physical: row.querySelector(".col-physical"),
+            source: row.querySelector(".col-source"),
+            fill: row.querySelector(".fill"),
+            peak: row.querySelector(".peak"),
+            value: row.querySelector(".col-value")
+          };
+          rowMap.set(desc.key, row);
+        }
+
+        ui.rows.appendChild(row);
+        renderRow(desc.input, desc.channelIndex, row);
+      }
+
+      applyFilter();
+    }
+
+    function renderRow(input, channelIndex, row) {
+      const shown = Number.isFinite(input.shown[channelIndex]) ? input.shown[channelIndex] : -Infinity;
+      const source = sourceLabel(input, channelIndex);
+      const cells = row._cells;
+
+      cells.input.textContent = inputLabel(input.id);
+      cells.channel.textContent = "ch " + (channelIndex + 1);
+      cells.physical.innerHTML = badgeMarkup(input.physical);
+      cells.source.textContent = source;
+      cells.fill.style.width = meterPercent(shown) + "%";
+      cells.peak.style.left = meterPercent(shown) + "%";
+      cells.value.textContent = formatDb(shown);
+    }
+
+    function applyFilter() {
+      let visible = 0;
+
+      for (const [key, row] of rowMap.entries()) {
+        const inputId = Number(key.split(":")[0]);
+        const input = inputs.get(inputId);
+        const show = !!input && (!ui.onlyPhysical.checked || input.physical === true);
+        row.classList.toggle("hidden", !show);
+        if (show) visible++;
+      }
+
+      ui.stats.textContent = visible + " row" + (visible === 1 ? "" : "s") + " visible";
+      ui.empty.style.display = visible ? "none" : "block";
+    }
+
+    function updateConnections(id, payload) {
+      const input = ensureInput(id);
+      const prevCount = channelCountForInput(input);
+
+      try {
+        const parsed = JSON.parse(payload);
+        input.conns = Array.isArray(parsed) ? parsed : [];
+        input.physical = flattenConnections(input.conns).some(looksPhysical);
+      } catch {
+        input.conns = [];
+        input.physical = null;
+      }
+
+      const nextCount = channelCountForInput(input);
+      if (nextCount !== prevCount) {
+        rebuildRows();
+        return;
+      }
+
+      for (let i = 0; i < nextCount; i++) {
+        const row = rowMap.get(rowKey(input.id, i));
+        if (row) renderRow(input, i, row);
+      }
+
+      applyFilter();
+    }
+
+    function updateMeters(id, payload) {
+      const input = ensureInput(id);
+      const prevCount = channelCountForInput(input);
+      const parts = String(payload).trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return;
+
+      input.shown.length = parts.length;
+
+      parts.forEach((part, index) => {
+        input.shown[index] = parseDb(part);
+      });
+
+      const nextCount = channelCountForInput(input);
+      if (nextCount !== prevCount) {
+        rebuildRows();
+        return;
+      }
+
+      for (let i = 0; i < nextCount; i++) {
+        const row = rowMap.get(rowKey(input.id, i));
+        if (row) renderRow(input, i, row);
+      }
+    }
+
+
+
+    function disconnect(updateStatus = true) {
+      if (client) {
+        client.end(true);
+        client = null;
+      }
+      clearData();
+      if (updateStatus) {
+        setStatus("", "Disconnected");
+      }
+    }
+
+    function connect() {
+      const wsUrl = ui.wsUrl.value.trim();
+      const root = ui.root.value.trim().replace(/\/+$/, "");
+
+      if (!wsUrl) {
+        setStatus("", "Enter a WebSocket URL");
+        return;
+      }
+
+      if (!root) {
+        setStatus("", "Enter an MQTT root");
+        return;
+      }
+
+      localStorage.setItem(store.url, wsUrl);
+      localStorage.setItem(store.root, root);
+      localStorage.setItem(store.filter, String(ui.onlyPhysical.checked));
+
+      disconnect(false);
+      setStatus("connecting", "Connecting…");
+
+      client = mqtt.connect(wsUrl, {
+        clean: true,
+        reconnectPeriod: 2000,
+        connectTimeout: 5000,
+        clientId: "mtxmx-meter-" + Math.random().toString(16).slice(2)
+      });
+
+      client.on("connect", () => {
+        setStatus("connected", "Connected");
+        client.subscribe(root + "/status/meters/+", { qos: 0 });
+        client.subscribe(root + "/status/+/connected_to", { qos: 1 });
+      });
+
+      client.on("reconnect", () => {
+        setStatus("connecting", "Reconnecting…");
+      });
+
+      client.on("close", () => {
+        setStatus("", "Disconnected");
+      });
+
+      client.on("error", (err) => {
+        setStatus("", "Error: " + ((err && err.message) || "connection failed"));
+      });
+
+      client.on("message", (topic, msg) => {
+        const payload = msg.toString();
+
+        let m = topic.match(new RegExp("^" + escRe(root) + "/status/meters/in(\\d{3})$"));
+        if (m) {
+          updateMeters(Number(m[1]), payload);
+          return;
+        }
+
+        m = topic.match(new RegExp("^" + escRe(root) + "/status/in(\\d{3})/connected_to$"));
+        if (m) {
+          updateConnections(Number(m[1]), payload);
+        }
+      });
+    }
+
+    ui.connectBtn.addEventListener("click", connect);
+    ui.disconnectBtn.addEventListener("click", () => disconnect(true));
+    ui.onlyPhysical.addEventListener("change", () => {
+      localStorage.setItem(store.filter, String(ui.onlyPhysical.checked));
+      applyFilter();
+    });
+
+    ui.wsUrl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") connect();
+    });
+
+    ui.root.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") connect();
+    });
+
+    applyFilter();
+
+    if (qs.get("autoconnect") !== "false") {
+      connect();
+    }
+  </script>
+</body>
+</html>
