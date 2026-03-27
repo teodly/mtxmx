@@ -290,7 +290,7 @@ impl<N, P> HighLevelMixer<N, P> {
                                 };
                                 self.matrix.cell_mut(out_index, in_index).enabled = is_on;
                                 self.commit_point(out_index, in_index);
-                                print_matrix(&self.rt.matrix);
+                                self.dump_matrix();
                                 return true;
                             }
                             "level" => {
@@ -298,7 +298,7 @@ impl<N, P> HighLevelMixer<N, P> {
                                     self.matrix.cell_mut(out_index, in_index).level =
                                         db_to_lin(new_level);
                                     self.commit_point(out_index, in_index);
-                                    print_matrix(&self.rt.matrix);
+                                    self.dump_matrix();
                                     return true;
                                 }
                             }
@@ -317,7 +317,7 @@ impl<N, P> HighLevelMixer<N, P> {
                                 };
                                 self.outputs[out_index].enabled = is_on;
                                 self.commit_output(out_index);
-                                print_matrix(&self.rt.matrix);
+                                self.dump_matrix();
                                 return true;
                             }
                             _ => return false,
@@ -343,7 +343,7 @@ impl<N, P> HighLevelMixer<N, P> {
                             };
                             self.inputs[in_index].enabled = is_on;
                             self.commit_input(in_index);
-                            print_matrix(&self.rt.matrix);
+                            self.dump_matrix();
                             return true;
                         }
                         _ => return false,
@@ -401,7 +401,7 @@ impl<N, P> HighLevelMixer<N, P> {
                     } else {
                         println!("BUG: no out_id or in_id for bus update");
                     }
-                    print_matrix(&self.rt.matrix);
+                    self.dump_matrix();
                     return true;
                 }
             };
@@ -441,7 +441,7 @@ impl<N, P> HighLevelMixer<N, P> {
                                     } else if let Some(in_id) = in_id_opt {
                                         self.commit_input(in_id - 1);
                                     }
-                                    print_matrix(&self.rt.matrix);
+                                    self.dump_matrix();
                                     return true;
                                 }
                             }
@@ -505,6 +505,26 @@ impl<N, P> HighLevelMixer<N, P> {
         }
         false
     }
+    fn dump_matrix(&self) {
+        print_matrix(&self.rt.matrix);
+        // make 4D (🤯) array:
+        let matrix = self.outputs.iter().map(|output| {
+            self.inputs.iter().map(|input| {
+                output.rt_channels.iter().map(|raw_output_index| {
+                    input.rt_channels.iter().map(|raw_input_index| {
+                        let level_linear = self.rt.matrix.cell(*raw_output_index, *raw_input_index).load(Ordering::Relaxed);
+                        lin_to_db(level_linear)
+                    }).collect_vec()
+                }).collect_vec()
+            }).collect_vec()
+        }).collect_vec();
+        // and send it to MQTT
+        let _ = self.to_mqtt.try_send(ToMQTT {
+            topic: "status/matrix_dump".to_string(),
+            value: serde_json::to_string(&matrix).unwrap_or("<error serializing matrix>".to_string()),
+            important: true,
+        });
+    }
     fn commit_point(&self, out_index: usize, in_index: usize) {
         let output = &self.outputs[out_index];
         let input = &self.inputs[in_index];
@@ -521,10 +541,10 @@ impl<N, P> HighLevelMixer<N, P> {
                     // input enters this bus, and output is connected to that bus
                     1.0
                 } else {
-                    0.0 // mix-minus on matrix diagonal
+                    0.0
                 }
             } else {
-                0.0
+                0.0 // mix-minus on matrix diagonal
             };
             
             point_level.max(bus_level) * input.gain * output.gain

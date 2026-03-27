@@ -29,8 +29,6 @@
  OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  OTHER DEALINGS IN THE SOFTWARE.
-
- For more information, please refer to <https://unlicense.org>
   -->
   <style>
     :root {
@@ -48,50 +46,54 @@
       --row-alt: rgba(255, 255, 255, 0.02);
     }
 
-    * { box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
     html, body {
-      margin: 0;
-      min-height: 100%;
-      background:
-        radial-gradient(circle at top, rgba(105, 168, 255, 0.12), transparent 30%),
-        linear-gradient(180deg, #08101e 0%, #0b1020 50%, #0a0f19 100%);
+      background: var(--bg);
       color: var(--text);
-      font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      height: 100%;
     }
 
     body {
-      padding: 18px;
+      min-height: 100%;
+      padding: 20px;
     }
 
     .wrap {
-      max-width: 1900px;
+      max-width: 1400px;
       margin: 0 auto;
     }
 
     h1 {
-      margin: 0 0 6px;
-      font-size: clamp(1.5rem, 2.5vw, 2.2rem);
+      font-size: 28px;
+      margin-bottom: 8px;
     }
 
     .subtitle {
-      margin: 0;
       color: var(--muted);
+      margin-bottom: 24px;
+      max-width: 800px;
     }
 
     .panel {
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
     }
 
     .controls {
-      margin-top: 16px;
-      padding: 14px;
       display: grid;
-      grid-template-columns: minmax(280px, 1.4fr) minmax(120px, 0.6fr) auto auto;
-      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
       align-items: end;
     }
 
@@ -99,57 +101,61 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
-      min-width: 0;
     }
 
     .field label {
+      font-size: 13px;
+      font-weight: 600;
       color: var(--muted);
-      font-size: 12px;
-      letter-spacing: 0.02em;
       text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
 
     input[type="text"] {
-      width: 100%;
-      min-width: 0;
-      background: #0b1324;
-      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
       border: 1px solid var(--border-soft);
-      border-radius: 10px;
-      padding: 10px 12px;
+      border-radius: 8px;
+      color: inherit;
       font: inherit;
-      outline: none;
+      padding: 10px 12px;
+      transition: all 0.2s ease;
     }
 
     input[type="text"]:focus {
+      outline: none;
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(75, 140, 255, 0.18);
+      box-shadow: 0 0 0 3px rgba(75, 140, 255, 0.2);
     }
 
     .button-row {
       display: flex;
       gap: 10px;
+      align-items: center;
     }
 
     button {
-      border: 0;
-      border-radius: 10px;
-      padding: 10px 14px;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 18px;
       font: inherit;
-      font-weight: 700;
+      font-weight: 600;
       cursor: pointer;
+      transition: all 0.2s ease;
       white-space: nowrap;
     }
 
     .primary {
       background: var(--accent);
       color: white;
+      border-color: var(--accent);
     }
 
     .secondary {
-      background: #202c47;
-      color: white;
-      border: 1px solid var(--border-soft);
+      background: transparent;
+      color: var(--accent);
+      border-color: var(--accent);
     }
 
     .checkbox {
@@ -264,8 +270,6 @@
       white-space: nowrap;
     }
 
-
-
     .badge {
       display: inline-flex;
       align-items: center;
@@ -339,6 +343,25 @@
       box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
     }
 
+    .fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      background: linear-gradient(90deg, #1dd1a1 0%, #2ed573 58%, #ffa502 84%, #ff4757 100%);
+    }
+
+    .peak {
+      position: absolute;
+      top: 1px;
+      bottom: 1px;
+      left: 0%;
+      width: 3px;
+      margin-left: -1px;
+      border-radius: 999px;
+      background: white;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+    }
+
     .empty {
       margin-top: 14px;
       padding: 24px;
@@ -350,28 +373,198 @@
     }
 
     .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+      font-size: 13px;
+      color: var(--accent);
     }
 
     @media (max-width: 980px) {
       .controls {
         grid-template-columns: 1fr;
       }
-
       .button-row button {
         flex: 1;
       }
     }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    .tab {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .tab:hover {
+      background: rgba(75, 140, 255, 0.1);
+      color: var(--accent);
+    }
+
+    .tab.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Matrix table styles */
+    .matrix-table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+      font-size: 11px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .matrix-table th,
+    .matrix-table td {
+      border: 1px solid var(--border-soft);
+      text-align: center;
+      vertical-align: middle;
+      padding: 2px 4px;
+      min-width: 24px;
+      height: 24px;
+      box-sizing: border-box;
+    }
+
+    .matrix-table th {
+      background: #1a243f;
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .matrix-table th.corner {
+      background: #0b1326;
+      position: sticky;
+      top: 0;
+      left: 0;
+      z-index: 30;
+    }
+
+    .matrix-table th.output-header {
+      background: #141d35;
+      position: sticky;
+      left: 0;
+      z-index: 15;
+    }
+
+    .matrix-table th.input-header {
+      background: #141d35;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .matrix-table th.output-channel {
+      background: #0b1326;
+      color: var(--muted);
+      font-weight: 600;
+      position: sticky;
+      left: 50px;
+      z-index: 14;
+    }
+
+    .matrix-table th.input-channel {
+      background: #0b1326;
+      color: var(--muted);
+      font-weight: 600;
+      position: sticky;
+      top: 25px;
+      z-index: 20;
+    }
+
+    .matrix-table td {
+      background: var(--meter-bg);
+      color: white;
+      font-weight: 700;
+      cursor: default;
+      transition: all 0.15s ease;
+    }
+
+    .matrix-table td:hover {
+      z-index: 1000;
+      transform: scale(1.15);
+      box-shadow: 0 0 0 2px white, 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+
+    .matrix-table td.empty {
+      opacity: 0.2;
+    }
+
+    /* Global tooltip */
+    .global-tooltip {
+      position: fixed;
+      background: var(--panel);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: pre-line;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      z-index: 10000;
+      min-width: 180px;
+      text-align: center;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .global-tooltip strong {
+      color: var(--accent);
+      display: block;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .matrix-connection-highlight {
+      background: rgba(75, 140, 255, 0.15) !important;
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
+
+    .matrix-dim-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin: 4px 0;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>MTXMX Input Peak Meters</h1>
-    <p class="subtitle">
-      Compact table view with one meter per row. Connects directly to your MQTT broker over WebSocket and listens to
-      <span class="mono">status/meters/inNNN</span> and
-      <span class="mono">status/inNNN/connected_to</span>.
-    </p>
+<div class="wrap">
+      <div class="tabs">
+        <button class="tab active" data-tab="meters">Input Meters</button>
+        <button class="tab" data-tab="matrix">Matrix View</button>
+      </div>
+      
+      <div class="tab-content active" id="meters">
+        <h1>MTXMX Input Peak Meters</h1>
+        <p class="subtitle">
+          Compact table view with one meter per row. Connects directly to your MQTT broker over WebSocket and listens to
+          <span class="mono">status/meters/inNNN</span> and
+          <span class="mono">status/inNNN/connected_to</span>.
+        </p>
 
     <div class="panel controls">
       <div class="field">
@@ -391,7 +584,7 @@
 
       <label class="checkbox">
         <input id="onlyPhysical" type="checkbox" checked>
-        <span>Only physical inputs</span>
+        <span>Only</span> physical inputs</span>
       </label>
     </div>
 
@@ -422,9 +615,59 @@
     <div id="empty" class="empty">
       Connect to the broker to receive retained connection metadata and live meter updates.
     </div>
-  </div>
+      </div>
 
-  <script src="./mqtt.min.js"></script>
+      <div class="tab-content" id="matrix">
+        <h1>MTXMX Matrix View</h1>
+        <p class="subtitle">
+          Shows output→input channel matrix levels in dB. Subscribes to
+          <span class="mono">status/matrix_dump</span> for live updates.
+        </p>
+        
+        <div class="panel controls">
+          <div class="field">
+            <label for="matrixMinDb">Min dB</label>
+            <input id="matrixMinDb" type="range" min="-60" max="0" value="-60" step="1">
+            <span id="matrixMinDbValue">-60 dB</span>
+          </div>
+          <div class="field">
+            <label for="matrixMaxDb">Max dB</label>
+            <input id="matrixMaxDb" type="range" min="-60" max="6" value="0" step="1">
+            <span id="matrixMaxDbValue">0 dB</span>
+          </div>
+          <div class="field">
+            <label for="matrixScale">Color Scale</label>
+            <select id="matrixScale">
+              <option value="sequential">Sequential</option>
+              <option value="diverging">Diverging</option>
+              <option value="gray">Gray Scale</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="matrixInfo" class="muted" style="margin: 14px 0">Waiting for matrix data...</div>
+        
+        <div id="matrixColorLegend" style="display: none; margin: 10px 0; height: 20px; border-radius: 4px; overflow: hidden; position: relative; background: linear-gradient(90deg, hsl(120, 70%, 50%) 0%, hsl(60, 70%, 50%) 50%, hsl(0, 70%, 50%) 100%);">
+          <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 100%; display: flex; justify-content: space-between; padding: 0 5px; align-items: center; font-size: 11px; font-weight: bold; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">
+            <span id="matrixMinLabel">-60 dB</span>
+            <span id="matrixMaxLabel">0 dB</span>
+          </div>
+        </div>
+        
+        <div id="matrixContainer" class="panel" style="display: none; padding: 0; overflow: auto; max-height: 80vh;">
+          <div id="matrixGrid"></div>
+        </div>
+        
+        <div id="matrixEmpty" class="empty">
+          Connect to the broker to receive matrix data from <span class="mono">status/matrix_dump</span>.
+        </div>
+      </div>
+    </div>
+
+  <!-- Global tooltip element -->
+  <div id="globalTooltip" class="global-tooltip"></div>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     const $ = (id) => document.getElementById(id);
 
@@ -438,7 +681,21 @@
       status: $("status"),
       stats: $("stats"),
       rows: $("rows"),
-      empty: $("empty")
+      empty: $("empty"),
+      tabs: document.querySelectorAll(".tab"),
+      tabContents: document.querySelectorAll(".tab-content"),
+      matrixMinDb: $("matrixMinDb"),
+      matrixMinDbValue: $("matrixMinDbValue"),
+      matrixMaxDb: $("matrixMaxDb"),
+      matrixMaxDbValue: $("matrixMaxDbValue"),
+      matrixScale: $("matrixScale"),
+      matrixInfo: $("matrixInfo"),
+      matrixColorLegend: $("matrixColorLegend"),
+      matrixMinLabel: $("matrixMinLabel"),
+      matrixMaxLabel: $("matrixMaxLabel"),
+      matrixContainer: $("matrixContainer"),
+      matrixGrid: $("matrixGrid"),
+      matrixEmpty: $("matrixEmpty")
     };
 
     const qs = new URLSearchParams(location.search);
@@ -709,7 +966,9 @@
       }
     }
 
-
+    function rowKey(inputId, channelIndex) {
+      return inputId + ":" + channelIndex;
+    }
 
     function disconnect(updateStatus = true) {
       if (client) {
@@ -720,6 +979,17 @@
       if (updateStatus) {
         setStatus("", "Disconnected");
       }
+    }
+
+    function clearData() {
+      inputs.clear();
+      rowMap.clear();
+      ui.rows.replaceChildren();
+      applyFilter();
+      window.inputLabels = {};
+      window.outputLabels = {};
+      window.outputConnections = {};
+      window.inputConnections = {};
     }
 
     function connect() {
@@ -754,6 +1024,9 @@
         setStatus("connected", "Connected");
         client.subscribe(root + "/status/meters/+", { qos: 0 });
         client.subscribe(root + "/status/+/connected_to", { qos: 1 });
+        client.subscribe(root + "/status/matrix_dump", { qos: 0 });
+        client.subscribe(root + "/config/+/name", { qos: 1 });
+        client.subscribe(root + "/config/+/connect_to", { qos: 1 });
       });
 
       client.on("reconnect", () => {
@@ -780,6 +1053,38 @@
         m = topic.match(new RegExp("^" + escRe(root) + "/status/in(\\d{3})/connected_to$"));
         if (m) {
           updateConnections(Number(m[1]), payload);
+          return;
+        }
+
+        if (topic === root + "/status/matrix_dump") {
+          updateMatrixData(payload);
+          return;
+        }
+
+        m = topic.match(new RegExp("^" + escRe(root) + "/config/((?:in|out)\\d{3})/name$"));
+        if (m) {
+          const epId = m[1];
+          if (epId.startsWith("out")) {
+            window.outputLabels[epId] = payload;
+          } else {
+            window.inputLabels[epId] = payload;
+          }
+          if (window.currentMatrix) renderMatrix(window.currentMatrix);
+        }
+
+        m = topic.match(new RegExp("^" + escRe(root) + "/config/((?:in|out)\\d{3})/connect_to$"));
+        if (m) {
+          const epId = m[1];
+          try {
+            const parsed = JSON.parse(payload);
+            const conns = Array.isArray(parsed) ? parsed : [];
+            if (epId.startsWith("out")) {
+              window.outputConnections[epId] = conns;
+            } else {
+              window.inputConnections[epId] = conns;
+            }
+            if (window.currentMatrix) renderMatrix(window.currentMatrix);
+          } catch {}
         }
       });
     }
@@ -804,6 +1109,357 @@
     if (qs.get("autoconnect") !== "false") {
       connect();
     }
+
+    // Tab switching
+    ui.tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        const tabId = tab.dataset.tab;
+        ui.tabs.forEach(t => t.classList.remove("active"));
+        ui.tabContents.forEach(c => c.classList.remove("active"));
+        tab.classList.add("active");
+        $(tabId).classList.add("active");
+      });
+    });
+
+    // Matrix controls
+    ui.matrixMinDb.addEventListener("input", () => {
+      ui.matrixMinDbValue.textContent = ui.matrixMinDb.value + " dB";
+      ui.matrixMinLabel.textContent = ui.matrixMinDb.value + " dB";
+      if (window.currentMatrix) renderMatrix(window.currentMatrix);
+    });
+
+    ui.matrixMaxDb.addEventListener("input", () => {
+      ui.matrixMaxDbValue.textContent = ui.matrixMaxDb.value + " dB";
+      ui.matrixMaxLabel.textContent = ui.matrixMaxDb.value + " dB";
+      if (window.currentMatrix) renderMatrix(window.currentMatrix);
+    });
+
+    ui.matrixScale.addEventListener("change", () => {
+      if (window.currentMatrix) renderMatrix(window.currentMatrix);
+    });
+
+    // Initialize legend labels
+    ui.matrixMinLabel.textContent = ui.matrixMinDb.value + " dB";
+    ui.matrixMaxLabel.textContent = ui.matrixMaxDb.value + " dB";
+
+    // Matrix data storage
+    window.currentMatrix = null;
+    window.inputLabels = {};
+    window.outputLabels = {};
+    window.outputConnections = {};
+    window.inputConnections = {};
+
+    function updateMatrixData(payload) {
+      try {
+        const matrix = JSON.parse(payload);
+        if (!Array.isArray(matrix) || !matrix.length) return;
+        
+        window.currentMatrix = matrix;
+        
+        const { outputChannelCounts, inputChannelCounts } = flattenMatrixTo2D(matrix);
+        const numOutputs = matrix.length;
+        const numInputs = outputChannelCounts.length ? (Array.isArray(matrix[0]) ? matrix[0] : []).length : 0;
+        const totalOutputChannels = outputChannelCounts.reduce((a, b) => a + b, 0);
+        const totalInputChannels = inputChannelCounts.reduce((a, b) => a + b, 0);
+        
+        ui.matrixInfo.textContent = 
+          `Matrix: ${numOutputs} outputs × ${numInputs} inputs | ` +
+          `Flattened: ${totalOutputChannels} output channels × ${totalInputChannels} input channels`;
+        
+        ui.matrixColorLegend.style.display = "block";
+        ui.matrixContainer.style.display = "block";
+        ui.matrixEmpty.style.display = "none";
+        
+        renderMatrix(matrix);
+      } catch (err) {
+        console.error("Failed to parse matrix data:", err);
+        ui.matrixInfo.textContent = "Error parsing matrix data";
+      }
+    }
+
+    function getColorForDb(db, minDb, maxDb, scale) {
+      if (!Number.isFinite(db) || db < minDb) db = minDb;
+      if (db > maxDb) db = maxDb;
+      
+      const normalized = (db - minDb) / (maxDb - minDb);
+      
+      switch (scale) {
+        case "gray":
+          const gray = Math.round(50 + normalized * 150);
+          return `rgb(${gray}, ${gray}, ${gray})`;
+          
+        case "diverging":
+          if (normalized < 0.5) {
+            const blue = Math.round(30 + normalized * 2 * 100);
+            return `rgb(30, 60, ${blue})`;
+          } else {
+            const red = Math.round(100 + (normalized - 0.5) * 2 * 155);
+            return `rgb(${red}, 80, 30)`;
+          }
+          
+        case "sequential":
+        default:
+          const hue = 120 * (1 - normalized); // green to red
+          return `hsl(${hue}, 70%, 50%)`;
+      }
+    }
+
+    function flattenMatrixTo2D(matrix) {
+      // serde_json serializes f32 -inf/NaN as null, and may serialize
+      // empty Vec as null in some contexts.  Treat null as [] at every level.
+      function arr(v) { return Array.isArray(v) ? v : []; }
+      function num(v) { return typeof v === "number" && Number.isFinite(v) ? v : -Infinity; }
+
+      const numOutputs = matrix.length;
+      const numInputs = arr(matrix[0]).length;
+
+      // matrix[o][i] is an array of outChannels; each outChannel is an array of inChannels.
+      // Determine output channel count per output endpoint.
+      const outputChannelCounts = [];
+      for (let o = 0; o < numOutputs; o++) {
+        let maxCh = 0;
+        for (let i = 0; i < numInputs; i++) {
+          maxCh = Math.max(maxCh, arr(arr(matrix[o])[i]).length);
+        }
+        const outId = `out${String(o + 1).padStart(3, "0")}`;
+        const outConns = window.outputConnections[outId];
+        if (Array.isArray(outConns)) {
+          maxCh = Math.max(maxCh, outConns.length);
+        }
+        outputChannelCounts.push(maxCh || 1);
+      }
+
+      // Determine input channel count per input endpoint.
+      const inputChannelCounts = [];
+      for (let i = 0; i < numInputs; i++) {
+        let maxCh = 0;
+        for (let o = 0; o < numOutputs; o++) {
+          const block = arr(arr(matrix[o])[i]);
+          for (let oc = 0; oc < block.length; oc++) {
+            maxCh = Math.max(maxCh, arr(block[oc]).length);
+          }
+        }
+        const inId = `in${String(i + 1).padStart(3, "0")}`;
+        const inConns = window.inputConnections[inId];
+        if (Array.isArray(inConns)) {
+          maxCh = Math.max(maxCh, inConns.length);
+        }
+        inputChannelCounts.push(maxCh || 1);
+      }
+
+      // Flatten to 2D: rows = output channels, cols = input channels.
+      const flattened = [];
+      for (let o = 0; o < numOutputs; o++) {
+        for (let outCh = 0; outCh < outputChannelCounts[o]; outCh++) {
+          const row = [];
+          for (let i = 0; i < numInputs; i++) {
+            for (let inCh = 0; inCh < inputChannelCounts[i]; inCh++) {
+              const value = num(arr(arr(arr(matrix[o])[i])[outCh])[inCh]);
+              row.push({
+                value,
+                outputIdx: o,
+                inputIdx: i,
+                outCh,
+                inCh
+              });
+            }
+          }
+          flattened.push(row);
+        }
+      }
+
+      return { flattened, outputChannelCounts, inputChannelCounts };
+    }
+
+    // Global tooltip functions
+    const globalTooltip = document.getElementById("globalTooltip");
+    let tooltipTimeout = null;
+
+    function showTooltip(event, html) {
+      clearTimeout(tooltipTimeout);
+      globalTooltip.innerHTML = html;
+      globalTooltip.style.opacity = 1;
+      positionTooltip(event);
+    }
+
+    function hideTooltip() {
+      tooltipTimeout = setTimeout(() => {
+        globalTooltip.style.opacity = 0;
+      }, 100);
+    }
+
+    function positionTooltip(event) {
+      const x = event.clientX + 10;
+      const y = event.clientY + 10;
+      globalTooltip.style.left = x + "px";
+      globalTooltip.style.top = y + "px";
+    }
+
+    // Highlight functions
+    function highlightConnections(outputIdx, outCh, inputIdx, inCh) {
+      // Clear previous highlights
+      clearHighlights();
+      
+      // Highlight all cells in the same output channel row and input channel column
+      const cells = document.querySelectorAll(`.matrix-table td[data-output-idx="${outputIdx}"][data-out-ch="${outCh}"]`);
+      cells.forEach(cell => cell.classList.add("matrix-connection-highlight"));
+      
+      const cells2 = document.querySelectorAll(`.matrix-table td[data-input-idx="${inputIdx}"][data-in-ch="${inCh}"]`);
+      cells2.forEach(cell => cell.classList.add("matrix-connection-highlight"));
+    }
+
+    function clearHighlights() {
+      document.querySelectorAll(".matrix-connection-highlight").forEach(el => {
+        el.classList.remove("matrix-connection-highlight");
+      });
+    }
+
+    function renderMatrix(matrix) {
+      const minDb = parseInt(ui.matrixMinDb.value);
+      const maxDb = parseInt(ui.matrixMaxDb.value);
+      const scale = ui.matrixScale.value;
+
+      const { flattened, outputChannelCounts, inputChannelCounts } = flattenMatrixTo2D(matrix);
+
+      if (!flattened.length) {
+        ui.matrixGrid.innerHTML = '<div class="empty">No matrix data available</div>';
+        return;
+      }
+
+      // ── Build <table> ──────────────────────────────────────────────────
+      const table = document.createElement("table");
+      table.className = "matrix-table";
+
+      // ── <thead>: two rows ──────────────────────────────────────────────
+      const thead = document.createElement("thead");
+
+      // Row 1: corner cell + one <th> per input endpoint (colspan = channel count)
+      const headerRow1 = document.createElement("tr");
+
+      // Corner spans 2 columns (output-header + output-channel) × 2 rows (input-header + input-channel)
+      const cornerTh = document.createElement("th");
+      cornerTh.className = "corner";
+      cornerTh.colSpan = 2;
+      cornerTh.rowSpan = 2;
+      cornerTh.textContent = "out ╲ in";
+      headerRow1.appendChild(cornerTh);
+
+      // Input endpoint headers
+      for (let i = 0; i < inputChannelCounts.length; i++) {
+        const th = document.createElement("th");
+        th.className = "input-header";
+        if (inputChannelCounts[i] > 1) {
+          th.colSpan = inputChannelCounts[i];
+        }
+        const inId = `in${String(i + 1).padStart(3, "0")}`;
+        const inName = window.inputLabels[inId];
+        th.textContent = inName ? `${inId} ${inName}` : inId;
+        headerRow1.appendChild(th);
+      }
+      thead.appendChild(headerRow1);
+
+      // Row 2: input channel sub-headers (corner already spanned into this row)
+      const headerRow2 = document.createElement("tr");
+      for (let i = 0; i < inputChannelCounts.length; i++) {
+        for (let ch = 0; ch < inputChannelCounts[i]; ch++) {
+          const th = document.createElement("th");
+          th.className = "input-channel";
+          th.textContent = `ch${ch + 1}`;
+          headerRow2.appendChild(th);
+        }
+      }
+      thead.appendChild(headerRow2);
+      table.appendChild(thead);
+
+      // ── <tbody>: one row per flattened output channel ──────────────────
+      const tbody = document.createElement("tbody");
+      let flatRow = 0;
+
+      for (let outIdx = 0; outIdx < outputChannelCounts.length; outIdx++) {
+        const outChannels = outputChannelCounts[outIdx];
+
+        for (let outCh = 0; outCh < outChannels; outCh++) {
+          const tr = document.createElement("tr");
+
+          // Output endpoint header – only on the first channel of each output
+          if (outCh === 0) {
+            const th = document.createElement("th");
+            th.className = "output-header";
+            if (outChannels > 1) {
+              th.rowSpan = outChannels;
+            }
+            const outId = `out${String(outIdx + 1).padStart(3, "0")}`;
+            const outName = window.outputLabels[outId];
+            th.textContent = outName ? `${outId} ${outName}` : outId;
+            tr.appendChild(th);
+          }
+
+          // Output channel sub-header
+          const chTh = document.createElement("th");
+          chTh.className = "output-channel";
+          chTh.textContent = `ch${outCh + 1}`;
+          tr.appendChild(chTh);
+
+          // Data cells – iterate over flattened input channels
+          const rowData = flattened[flatRow];
+          for (let col = 0; col < rowData.length; col++) {
+            const cell = rowData[col];
+            const v = cell.value;
+            const td = document.createElement("td");
+
+            td.dataset.outputIdx = cell.outputIdx;
+            td.dataset.outCh = cell.outCh;
+            td.dataset.inputIdx = cell.inputIdx;
+            td.dataset.inCh = cell.inCh;
+
+            if (Number.isFinite(v) && v > minDb) {
+              td.style.background = getColorForDb(v, minDb, maxDb, scale);
+              td.textContent = v.toFixed(0);
+
+              // Closure-safe references for the event listeners
+              const oIdx = cell.outputIdx, oCh = cell.outCh;
+              const iIdx = cell.inputIdx, iCh = cell.inCh;
+              const dbVal = v;
+
+              td.addEventListener("mouseenter", function (e) {
+                const outId = `out${String(oIdx + 1).padStart(3, "0")}`;
+                const inId = `in${String(iIdx + 1).padStart(3, "0")}`;
+                const outLabel = window.outputLabels[outId] ? ` (${window.outputLabels[outId]})` : "";
+                const inLabel = window.inputLabels[inId] ? ` (${window.inputLabels[inId]})` : "";
+                showTooltip(e,
+                  `<strong>${outId}${outLabel} ch${oCh + 1} → ${inId}${inLabel} ch${iCh + 1}</strong><br>${dbVal.toFixed(1)} dB`);
+                highlightConnections(oIdx, oCh, iIdx, iCh);
+              });
+              td.addEventListener("mouseleave", function () {
+                hideTooltip();
+                clearHighlights();
+              });
+            } else {
+              td.classList.add("empty");
+              td.textContent = "-";
+            }
+
+            tr.appendChild(td);
+          }
+
+          tbody.appendChild(tr);
+          flatRow++;
+        }
+      }
+
+      table.appendChild(tbody);
+
+      // ── Swap into DOM ──────────────────────────────────────────────────
+      ui.matrixGrid.innerHTML = "";
+      ui.matrixGrid.appendChild(table);
+    }
+
+    const originalConnectFn = connect;
+    connect = function() {
+      originalConnectFn();
+      
+      // The subscription will be added in the client.on("connect") handler
+    };
   </script>
 </body>
 </html>
