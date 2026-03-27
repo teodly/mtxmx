@@ -498,7 +498,6 @@
       color: white;
       font-weight: 700;
       cursor: default;
-      transition: all 0.15s ease;
     }
 
     .matrix-table td:hover {
@@ -522,7 +521,6 @@
       white-space: pre-line;
       pointer-events: none;
       opacity: 0;
-      transition: opacity 0.2s ease;
       z-index: 10000;
       min-width: 180px;
       text-align: center;
@@ -538,7 +536,13 @@
     }
 
     .matrix-connection-highlight {
-      background: rgba(75, 140, 255, 0.15) !important;
+      background: rgba(75, 140, 255, 0.15);
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
+
+    .matrix-table th.highlight-header {
+      background: rgba(75, 140, 255, 0.2);
       outline: 2px solid var(--accent);
       outline-offset: -1px;
     }
@@ -1121,6 +1125,24 @@
       });
     });
 
+    function updateLegendGradient() {
+      const scale = ui.matrixScale.value;
+      let gradient;
+      switch (scale) {
+        case "gray":
+          gradient = "linear-gradient(90deg, rgb(50,50,50) 0%, rgb(200,200,200) 100%)";
+          break;
+        case "diverging":
+          gradient = "linear-gradient(90deg, rgb(30,60,30) 0%, rgb(30,60,130) 50%, rgb(255,80,30) 100%)";
+          break;
+        case "sequential":
+        default:
+          gradient = "linear-gradient(90deg, hsl(120, 70%, 50%) 0%, hsl(60, 70%, 50%) 50%, hsl(0, 70%, 50%) 100%)";
+          break;
+      }
+      ui.matrixColorLegend.style.background = gradient;
+    }
+
     // Matrix controls
     ui.matrixMinDb.addEventListener("input", () => {
       ui.matrixMinDbValue.textContent = ui.matrixMinDb.value + " dB";
@@ -1135,6 +1157,7 @@
     });
 
     ui.matrixScale.addEventListener("change", () => {
+      updateLegendGradient();
       if (window.currentMatrix) renderMatrix(window.currentMatrix);
     });
 
@@ -1166,6 +1189,7 @@
           `Matrix: ${numOutputs} outputs × ${numInputs} inputs | ` +
           `Flattened: ${totalOutputChannels} output channels × ${totalInputChannels} input channels`;
         
+        updateLegendGradient();
         ui.matrixColorLegend.style.display = "block";
         ui.matrixContainer.style.display = "block";
         ui.matrixEmpty.style.display = "none";
@@ -1312,6 +1336,29 @@
       document.querySelectorAll(".matrix-connection-highlight").forEach(el => {
         el.classList.remove("matrix-connection-highlight");
       });
+      document.querySelectorAll(".highlight-header").forEach(el => {
+        el.classList.remove("highlight-header");
+      });
+    }
+
+    function highlightInputColumn(inputIdx, inCh) {
+      const cells = document.querySelectorAll(`.matrix-table td[data-input-idx="${inputIdx}"][data-in-ch="${inCh}"]`);
+      cells.forEach(cell => cell.classList.add("matrix-connection-highlight"));
+    }
+
+    function highlightOutputRow(outputIdx, outCh) {
+      const cells = document.querySelectorAll(`.matrix-table td[data-output-idx="${outputIdx}"][data-out-ch="${outCh}"]`);
+      cells.forEach(cell => cell.classList.add("matrix-connection-highlight"));
+    }
+
+    function highlightInputEndpoint(inputIdx) {
+      const cells = document.querySelectorAll(`.matrix-table td[data-input-idx="${inputIdx}"]`);
+      cells.forEach(cell => cell.classList.add("matrix-connection-highlight"));
+    }
+
+    function highlightOutputEndpoint(outputIdx) {
+      const cells = document.querySelectorAll(`.matrix-table td[data-output-idx="${outputIdx}"]`);
+      cells.forEach(cell => cell.classList.add("matrix-connection-highlight"));
     }
 
     function renderMatrix(matrix) {
@@ -1354,6 +1401,14 @@
         const inId = `in${String(i + 1).padStart(3, "0")}`;
         const inName = window.inputLabels[inId];
         th.textContent = inName ? `${inId} ${inName}` : inId;
+        const inputIdx = i;
+        th.addEventListener("mouseenter", function () {
+          th.classList.add("highlight-header");
+          highlightInputEndpoint(inputIdx);
+        });
+        th.addEventListener("mouseleave", function () {
+          clearHighlights();
+        });
         headerRow1.appendChild(th);
       }
       thead.appendChild(headerRow1);
@@ -1365,6 +1420,15 @@
           const th = document.createElement("th");
           th.className = "input-channel";
           th.textContent = `ch${ch + 1}`;
+          const inputIdx = i;
+          const inCh = ch;
+          th.addEventListener("mouseenter", function () {
+            th.classList.add("highlight-header");
+            highlightInputColumn(inputIdx, inCh);
+          });
+          th.addEventListener("mouseleave", function () {
+            clearHighlights();
+          });
           headerRow2.appendChild(th);
         }
       }
@@ -1391,6 +1455,14 @@
             const outId = `out${String(outIdx + 1).padStart(3, "0")}`;
             const outName = window.outputLabels[outId];
             th.textContent = outName ? `${outId} ${outName}` : outId;
+            const oIdx = outIdx;
+            th.addEventListener("mouseenter", function () {
+              th.classList.add("highlight-header");
+              highlightOutputEndpoint(oIdx);
+            });
+            th.addEventListener("mouseleave", function () {
+              clearHighlights();
+            });
             tr.appendChild(th);
           }
 
@@ -1398,6 +1470,15 @@
           const chTh = document.createElement("th");
           chTh.className = "output-channel";
           chTh.textContent = `ch${outCh + 1}`;
+          const oIdx = outIdx;
+          const oCh = outCh;
+          chTh.addEventListener("mouseenter", function () {
+            chTh.classList.add("highlight-header");
+            highlightOutputRow(oIdx, oCh);
+          });
+          chTh.addEventListener("mouseleave", function () {
+            clearHighlights();
+          });
           tr.appendChild(chTh);
 
           // Data cells – iterate over flattened input channels
@@ -1412,8 +1493,15 @@
             td.dataset.inputIdx = cell.inputIdx;
             td.dataset.inCh = cell.inCh;
 
-            if (Number.isFinite(v) && v > minDb) {
-              td.style.background = getColorForDb(v, minDb, maxDb, scale);
+            if (!Number.isFinite(v)) {
+              td.classList.add("empty");
+              td.textContent = "-";
+            } else {
+              if (v > minDb) {
+                td.style.background = getColorForDb(v, minDb, maxDb, scale);
+              } else {
+                td.classList.add("empty");
+              }
               td.textContent = v.toFixed(0);
 
               // Closure-safe references for the event listeners
@@ -1434,9 +1522,6 @@
                 hideTooltip();
                 clearHighlights();
               });
-            } else {
-              td.classList.add("empty");
-              td.textContent = "-";
             }
 
             tr.appendChild(td);
